@@ -1,0 +1,11 @@
+services:
+  dvf-gpt:
+    build: .
+    container_name: dvf-gpt
+    ports:
+      - "5001:5001"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

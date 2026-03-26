@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DVF GPT — Assistant Immobilier</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+          colors: {
+            brand: {
+              50:'#f5f3ff',100:'#ede9fe',200:'#ddd6fe',300:'#c4b5fd',
+              400:'#a78bfa',500:'#8b5cf6',600:'#7c3aed',700:'#6d28d9',
+              800:'#5b21b6',900:'#4c1d95',
+            },
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * { font-family: 'Inter', sans-serif; }
+    code, .mono { font-family: 'JetBrains Mono', monospace; }
+
+    body { background: #f8f9fc; color: #334155; }
+
+    .surface {
+      background: #ffffff;
+      border: 1px solid #e8eaef;
+    }
+    .surface-raised {
+      background: #ffffff;
+      border: 1px solid #e2e5eb;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+    }
+    .surface-section {
+      background: #ffffff;
+      border: 1px solid #eceef2;
+    }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); }
+      40%           { transform: translateY(-6px); }
+    }
+
+    .msg-enter { animation: slideUp 0.3s ease forwards; }
+    .fade-in { animation: fadeIn 0.25s ease forwards; }
+    .dot { animation: bounce 1.4s infinite; }
+    .dot:nth-child(2) { animation-delay: 0.15s; }
+    .dot:nth-child(3) { animation-delay: 0.3s; }
+
+    #map { border-radius: 8px; min-height: 340px; }
+
+    .stat-card { transition: all 0.2s ease; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.06); }
+
+    #chat-input:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(139,92,246,0.25);
+      border-color: #a78bfa;
+    }
+
+    #send-btn:not(:disabled):hover { transform: scale(1.04); box-shadow: 0 4px 14px rgba(139,92,246,0.3); }
+    #send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    #send-btn { transition: all 0.15s ease; }
+
+    #chat-messages { scroll-behavior: smooth; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+    .bot-md p { margin-bottom: 0.4em; }
+    .bot-md p:last-child { margin-bottom: 0; }
+    .bot-md strong { color: #6d28d9; font-weight: 600; }
+    .bot-md ul, .bot-md ol { padding-left: 1.2em; margin: 0.3em 0; }
+    .bot-md li { margin-bottom: 0.15em; }
+    .bot-md code { background: #f3f0ff; color: #6d28d9; padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.85em; }
+    .bot-md h3, .bot-md h4 { font-weight: 600; margin: 0.5em 0 0.2em; color: #1e293b; }
+    .bot-md br { display: none; }
+
+    .thinking-step { position: relative; padding-left: 18px; }
+    .thinking-step::before {
+      content: ''; position: absolute; left: 3.5px; top: 10px; bottom: -8px;
+      width: 1px; background: #ddd6fe;
+    }
+    .thinking-step:last-child::before { display: none; }
+    .thinking-step::after {
+      content: ''; position: absolute; left: 0; top: 7px; width: 8px; height: 8px;
+      border-radius: 50%; background: #8b5cf6;
+    }
+
+    #chat-section, #viz-panel { transition: max-width 0.35s ease, flex 0.35s ease; }
+
+    .user-bubble { background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%); }
+    .bot-avatar { background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%); }
+
+    .bot-bubble { max-width: min(92%, 560px); transition: all 0.2s ease; }
+    .viz-msg { cursor: pointer; user-select: text; }
+    .viz-msg:hover { background: #faf8ff; border-color: #ddd6fe; }
+    .viz-msg.active-viz { border-color: #c4b5fd; box-shadow: 0 0 0 1px #ede9fe; }
+    #info-chevron.rotated { transform: rotate(180deg); }
+    #info-content { overflow: hidden; }
+  </style>
+</head>
+
+<body class="h-screen flex flex-col">
+
+  <!-- HEADER -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-50 px-5 py-3 flex items-center justify-between flex-shrink-0">
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 bg-gradient-to-br from-violet-600 to-violet-500 rounded-lg flex items-center justify-center shadow-sm">
+        <i data-lucide="home" class="w-4 h-4 text-white"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-semibold text-gray-900 leading-none">DVF GPT</h1>
+        <p class="text-[10px] text-gray-400 mt-0.5">Assistant immobilier</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <div id="db-status" class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-gray-50 text-gray-400 border border-gray-200">
+        <span class="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block"></span>
+        Chargement…
+      </div>
+      <button id="toggle-viz-btn" onclick="toggleVizPanel()"
+              class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-lg bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-700 transition-colors cursor-pointer">
+        <i data-lucide="panel-right" class="w-3.5 h-3.5"></i>
+        <span id="toggle-viz-label">Afficher</span>
+      </button>
+      <a href="https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/" target="_blank"
+         class="text-[11px] text-gray-300 hover:text-violet-500 transition-colors flex items-center gap-1">
+        <i data-lucide="external-link" class="w-3 h-3"></i>DVF
+      </a>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="flex-1 flex min-h-0 overflow-hidden">
+
+    <!-- CHAT -->
+    <section id="chat-section" class="flex flex-col min-h-0" style="flex: 1 1 0; max-width: 100%; min-width: 340px;">
+
+      <div id="chat-messages" class="flex-1 overflow-y-auto px-5 py-5 space-y-4 min-h-0">
+
+        <!-- Welcome -->
+        <div class="msg-enter">
+          <div class="flex items-start gap-2.5">
+            <div class="w-7 h-7 bot-avatar rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5 text-white"></i>
+            </div>
+            <div class="bot-bubble surface-raised rounded-2xl rounded-tl-sm px-5 py-3.5">
+              <p class="text-sm text-gray-700 leading-relaxed">
+                Bonjour, je suis <strong class="text-violet-700">DVF GPT</strong>, votre assistant immobilier.
+              </p>
+              <p class="text-sm text-gray-400 mt-1.5 leading-relaxed">
+                Posez-moi vos questions sur les prix, les transactions ou le marché.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Info toggle -->
+        <div class="pl-10 msg-enter">
+          <button onclick="toggleInfo()" class="surface-raised rounded-xl px-3 py-2 inline-flex items-center gap-2 hover:bg-violet-50 transition-colors cursor-pointer group">
+            <i data-lucide="info" class="w-3.5 h-3.5 text-violet-400 group-hover:text-violet-600 transition-colors"></i>
+            <span class="text-xs text-gray-400 group-hover:text-gray-600 transition-colors">Voir mes fonctionnalités</span>
+            <i data-lucide="chevron-down" id="info-chevron" class="w-3 h-3 text-gray-300 transition-transform"></i>
+          </button>
+          <div id="info-content" class="hidden mt-2 surface-raised rounded-2xl px-4 py-3.5 max-w-md">
+            <div class="space-y-2">
+              <div class="flex items-start gap-2.5">
+                <div class="w-5 h-5 rounded bg-violet-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i data-lucide="bar-chart-3" class="w-3 h-3 text-violet-500"></i>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-gray-600">Prix au m²</p>
+                  <p class="text-[11px] text-gray-400">prix m² à Lyon, prix m² dans le 75</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-2.5">
+                <div class="w-5 h-5 rounded bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i data-lucide="search" class="w-3 h-3 text-blue-500"></i>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-gray-600">Transactions comparables</p>
+                  <p class="text-[11px] text-gray-400">comparables appartement 70m² Paris</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-2.5">
+                <div class="w-5 h-5 rounded bg-emerald-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i data-lucide="calculator" class="w-3 h-3 text-emerald-500"></i>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-gray-600">Estimation de bien</p>
+                  <p class="text-[11px] text-gray-400">estimation maison 90m² Bordeaux</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-2.5">
+                <div class="w-5 h-5 rounded bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i data-lucide="trending-up" class="w-3 h-3 text-amber-500"></i>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-gray-600">Evolution des prix</p>
+                  <p class="text-[11px] text-gray-400">évolution des prix à Marseille</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-2.5">
+                <div class="w-5 h-5 rounded bg-rose-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <i data-lucide="git-compare" class="w-3 h-3 text-rose-500"></i>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-gray-600">Comparaison de zones</p>
+                  <p class="text-[11px] text-gray-400">comparer Lyon et Marseille, comparer le 75 et le 69</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input bar -->
+      <div class="px-4 py-3 bg-white border-t border-gray-200 flex-shrink-0">
+        <div class="flex items-end gap-2">
+          <textarea id="chat-input" rows="1" placeholder="Posez votre question..."
+            class="flex-1 resize-none text-sm rounded-xl px-4 py-2.5 text-gray-800 placeholder-gray-400 bg-gray-50 border border-gray-200 transition-all"
+            style="max-height: 110px; overflow-y: auto;"></textarea>
+          <button id="send-btn" onclick="sendMessage()"
+                  class="w-9 h-9 bg-violet-600 hover:bg-violet-700 rounded-xl flex items-center justify-center text-white flex-shrink-0" disabled>
+            <i data-lucide="arrow-up" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <p class="text-[10px] text-gray-300 mt-1.5 text-center">
+          Données DVF 2023-2025 · 1,17M+ transactions
+        </p>
+      </div>
+    </section>
+
+    <!-- VIZ PANEL -->
+    <section class="flex-1 overflow-y-auto p-5 min-h-0 border-l border-gray-200" id="viz-panel" style="background: #f4f5f8; display: none;">
+
+      <div id="viz-empty" class="h-full flex flex-col items-center justify-center text-center">
+        <div class="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
+          <i data-lucide="bar-chart-2" class="w-6 h-6 text-gray-300"></i>
+        </div>
+        <h2 class="text-gray-400 font-medium text-sm">Aucune visualisation</h2>
+        <p class="text-gray-300 text-xs mt-1 max-w-[200px] leading-relaxed">
+          Les graphiques et cartes apparaitront ici.
+        </p>
+      </div>
+
+      <div id="viz-content" class="hidden space-y-4">
+        <div id="stats-cards" class="hidden grid grid-cols-2 lg:grid-cols-3 gap-3"></div>
+
+        <div id="map-container" class="hidden surface-raised rounded-xl overflow-hidden">
+          <div class="px-4 py-3 flex items-center gap-2 border-b border-gray-100">
+            <i data-lucide="map-pin" class="w-4 h-4 text-violet-500"></i>
+            <h3 class="font-semibold text-gray-700 text-sm" id="map-title">Carte</h3>
+          </div>
+          <div id="map" style="height: 340px;"></div>
+        </div>
+
+        <div id="chart-container" class="hidden surface-raised rounded-xl p-5">
+          <div class="flex items-center gap-2 mb-4">
+            <i data-lucide="trending-up" class="w-4 h-4 text-violet-500"></i>
+            <h3 class="font-semibold text-gray-700 text-sm" id="chart-title">Graphique</h3>
+          </div>
+          <div style="position: relative; height: 280px;">
+            <canvas id="main-chart"></canvas>
+          </div>
+        </div>
+
+        <div id="table-container" class="hidden surface-raised rounded-xl overflow-hidden">
+          <div class="px-4 py-3 flex items-center gap-2 border-b border-gray-100">
+            <i data-lucide="list" class="w-4 h-4 text-violet-500"></i>
+            <h3 class="font-semibold text-gray-700 text-sm">Transactions comparables</h3>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="bg-gray-50">
+                  <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Date</th>
+                  <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Surface</th>
+                  <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Prix/m²</th>
+                  <th class="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Prix total</th>
+                </tr>
+              </thead>
+              <tbody id="table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    lucide.createIcons();
+
+    let mapInstance = null;
+    let chartInstance = null;
+    let vizPanelVisible = false;
+    let activeVizMsgId = null;
+    const input = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('send-btn');
+
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 110) + 'px';
+      sendBtn.disabled = input.value.trim().length === 0;
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!sendBtn.disabled) sendMessage(); }
+    });
+
+    async function checkHealth() {
+      try {
+        const r = await fetch('/api/health');
+        const d = await r.json();
+        const el = document.getElementById('db-status');
+        if (d.database === 'ready') {
+          el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span> Base prete';
+          el.className = 'flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full text-emerald-600 bg-emerald-50 border border-emerald-200';
+        } else {
+          el.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block"></span> Non disponible';
+          el.className = 'flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full text-amber-600 bg-amber-50 border border-amber-200';
+        }
+      } catch {}
+    }
+    checkHealth();
+
+    async function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+      appendUserMessage(text);
+      input.value = '';
+      input.style.height = 'auto';
+      sendBtn.disabled = true;
+      const typingId = appendTyping();
+      try {
+        const r = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text }),
+        });
+        const data = await r.json();
+        removeTyping(typingId);
+        const hasViz = data.data && data.data_type && data.data_type !== 'error' && data.data_type !== 'unknown';
+        const msgId = appendBotMessage(data.message, hasViz ? data : null, data.debug || null);
+        if (hasViz) { renderViz(data); activeVizMsgId = msgId; if (!vizPanelVisible) toggleVizPanel(); highlightActiveMsg(); }
+      } catch (err) {
+        removeTyping(typingId);
+        appendBotMessage("Erreur reseau. Verifiez votre connexion.");
+      }
+    }
+
+    function appendUserMessage(text) {
+      const div = document.createElement('div');
+      div.className = 'flex justify-end msg-enter';
+      div.innerHTML = '<div class="user-bubble text-white rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-sm shadow-sm"><p class="text-sm leading-relaxed">' + escHtml(text) + '</p></div>';
+      addToChat(div);
+    }
+
+    function appendBotMessage(text, vizData, debugData) {
+      const msgId = 'msg-' + Date.now();
+      const div = document.createElement('div');
+      div.className = 'flex items-start gap-2.5 msg-enter';
+      div.dataset.msgId = msgId;
+      if (vizData) div.dataset.vizData = JSON.stringify(vizData);
+
+      const htmlContent = marked.parse(text, { breaks: true });
+
+      let vizHint = '';
+      if (vizData) {
+        vizHint = '<div class="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-gray-100 text-[11px] text-gray-300 select-none"><i data-lucide="bar-chart-2" class="w-3 h-3"></i><span>Cliquez pour afficher les données</span></div>';
+      }
+
+      let thinkingBtn = '';
+      if (debugData && debugData.steps) {
+        const stepsHtml = debugData.steps.map(function(s) {
+          return '<div class="thinking-step"><p class="text-[11px] text-gray-400 leading-relaxed">' + marked.parse(s, {breaks:true}) + '</p></div>';
+        }).join('');
+        thinkingBtn = '<button onclick="event.stopPropagation(); toggleThinking(\'' + msgId + '\')" class="flex items-center gap-1 mt-2 text-[11px] text-gray-300 hover:text-violet-500 transition-colors"><i data-lucide="cpu" class="w-3 h-3"></i><span>Raisonnement</span></button><div id="thinking-' + msgId + '" class="hidden mt-2 pt-2 border-t border-gray-100"><div class="space-y-2">' + stepsHtml + '</div></div>';
+      }
+
+      const vizClass = vizData ? ' viz-msg' : '';
+      const clickHandler = vizData ? ' onclick="toggleMessageViz(\'' + msgId + '\')"' : '';
+      div.innerHTML = '<div class="w-7 h-7 bot-avatar rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-white"></i></div><div class="bot-bubble surface-raised rounded-2xl rounded-tl-sm px-5 py-3.5 bot-md text-sm text-gray-600 leading-relaxed' + vizClass + '"' + clickHandler + '>' + htmlContent + vizHint + thinkingBtn + '</div>';
+      addToChat(div);
+      lucide.createIcons();
+      return msgId;
+    }
+
+    function appendTyping() {
+      const id = 'typing-' + Date.now();
+      const div = document.createElement('div');
+      div.id = id;
+      div.className = 'flex items-start gap-2.5 fade-in';
+      div.innerHTML = '<div class="w-7 h-7 bot-avatar rounded-full flex items-center justify-center flex-shrink-0 shadow-sm"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-white"></i></div><div class="surface-raised rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5"><span class="dot w-1.5 h-1.5 rounded-full bg-violet-400 inline-block"></span><span class="dot w-1.5 h-1.5 rounded-full bg-violet-300 inline-block"></span><span class="dot w-1.5 h-1.5 rounded-full bg-violet-200 inline-block"></span></div>';
+      addToChat(div);
+      lucide.createIcons();
+      return id;
+    }
+
+    function removeTyping(id) { const el = document.getElementById(id); if (el) el.remove(); }
+
+    function addToChat(el) {
+      const container = document.getElementById('chat-messages');
+      container.appendChild(el);
+      requestAnimationFrame(function() { container.scrollTop = container.scrollHeight; });
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function toggleThinking(msgId) {
+      const el = document.getElementById('thinking-' + msgId);
+      if (!el) return;
+      el.classList.toggle('hidden');
+      requestAnimationFrame(function() {
+        var container = document.getElementById('chat-messages');
+        container.scrollTop = container.scrollHeight;
+      });
+    }
+
+    function toggleVizPanel() {
+      const panel = document.getElementById('viz-panel');
+      const chat = document.getElementById('chat-section');
+      const label = document.getElementById('toggle-viz-label');
+      vizPanelVisible = !vizPanelVisible;
+      if (vizPanelVisible) {
+        panel.style.display = '';
+        chat.style.maxWidth = '680px';
+        label.textContent = 'Masquer';
+      } else {
+        panel.style.display = 'none';
+        chat.style.maxWidth = '100%';
+        label.textContent = 'Afficher';
+      }
+      if (mapInstance) { setTimeout(function() { mapInstance.invalidateSize(); }, 300); }
+    }
+
+    function toggleMessageViz(msgId) {
+      if (activeVizMsgId === msgId && vizPanelVisible) {
+        toggleVizPanel();
+        activeVizMsgId = null;
+        highlightActiveMsg();
+        return;
+      }
+      const msgEl = document.querySelector('[data-msg-id="' + msgId + '"]');
+      if (!msgEl || !msgEl.dataset.vizData) return;
+      renderViz(JSON.parse(msgEl.dataset.vizData));
+      activeVizMsgId = msgId;
+      if (!vizPanelVisible) toggleVizPanel();
+      highlightActiveMsg();
+    }
+
+    function highlightActiveMsg() {
+      document.querySelectorAll('.viz-msg').forEach(function(el) { el.classList.remove('active-viz'); });
+      if (activeVizMsgId) {
+        var el = document.querySelector('[data-msg-id="' + activeVizMsgId + '"] .viz-msg');
+        if (el) el.classList.add('active-viz');
+      }
+    }
+
+    function toggleInfo() {
+      var content = document.getElementById('info-content');
+      var chevron = document.getElementById('info-chevron');
+      if (content) content.classList.toggle('hidden');
+      if (chevron) chevron.classList.toggle('rotated');
+      requestAnimationFrame(function() {
+        document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+      });
+    }
+
+    // ====== VIZ ======
+    function renderViz(data) {
+      document.getElementById('viz-empty').classList.add('hidden');
+      document.getElementById('viz-content').classList.remove('hidden');
+      hide('stats-cards'); hide('map-container'); hide('chart-container'); hide('table-container');
+      if (!data.data) return;
+      switch (data.data_type) {
+        case 'prix_m2':     renderPrixM2(data.data); break;
+        case 'comparables': renderComparables(data.data); break;
+        case 'estimation':  renderEstimation(data.data); break;
+        case 'evolution':   renderEvolution(data.data); break;
+        case 'comparaison': renderComparaison(data.data); break;
+      }
+      lucide.createIcons();
+    }
+
+    function renderPrixM2(d) {
+      showStatsCards([
+        { icon: 'trending-up', label: 'Prix median', value: fmt(d.prix_median_m2)+' /m2', color: 'violet' },
+        { icon: 'bar-chart',   label: 'Prix moyen',  value: fmt(d.prix_moyen_m2)+' /m2',  color: 'blue' },
+        { icon: 'activity',    label: 'Transactions', value: fmtN(d.volume_transactions),   color: 'emerald' },
+        { icon: 'arrow-down',  label: 'P10',          value: fmt(d.prix_min_m2)+' /m2',    color: 'gray' },
+        { icon: 'arrow-up',    label: 'P90',          value: fmt(d.prix_max_m2)+' /m2',    color: 'gray' },
+      ]);
+      const lat = d.latitude || 46.2, lng = d.longitude || 2.2;
+      const zoom = (d.latitude && d.longitude) ? 12 : 6;
+      const markers = (d.latitude && d.longitude) ? [{ lat: d.latitude, lng: d.longitude,
+        popup: '<strong>'+d.ville+'</strong><br>'+fmt(d.prix_median_m2)+' /m2 (median)<br>'+fmtN(d.volume_transactions)+' transactions' }] : [];
+      showMap('Localisation — '+d.ville, lat, lng, zoom, markers);
+    }
+
+    function renderComparables(d) {
+      showStatsCards([
+        { icon: 'search',      label: 'Comparables', value: fmtN(d.count),                  color: 'violet' },
+        { icon: 'trending-up', label: 'Prix median', value: fmt(d.prix_median_m2)+' /m2',   color: 'blue' },
+        { icon: 'home',        label: 'Surface',     value: d.surface+' m2',                 color: 'emerald' },
+      ]);
+      const markers = d.transactions.map(function(t) { return {
+        lat: t.latitude, lng: t.longitude,
+        popup: '<strong>'+t.type_local+'</strong><br>'+t.surface_reelle_bati+' m2 - '+fmt(t.prix_m2)+' /m2<br>'+fmtEuro(t.valeur_fonciere)+'<br><span style="color:#94a3b8;font-size:11px">'+t.date_mutation+'</span>'
+      }; });
+      const center = markers.length > 0 ? [markers[0].lat, markers[0].lng] : [46.2, 2.2];
+      showMap('Comparables — '+d.ville, center[0], center[1], 13, markers);
+      showTable(d.transactions);
+    }
+
+    function renderEstimation(d) {
+      showStatsCards([
+        { icon: 'home',        label: 'Estimation',       value: fmtEuro(d.estimation_centrale), color: 'violet', large: true },
+        { icon: 'arrow-down',  label: 'Fourchette basse', value: fmtEuro(d.estimation_basse),    color: 'emerald' },
+        { icon: 'arrow-up',    label: 'Fourchette haute', value: fmtEuro(d.estimation_haute),     color: 'rose' },
+        { icon: 'trending-up', label: 'Prix median/m2',   value: fmt(d.prix_median_m2)+' /m2',    color: 'blue' },
+        { icon: 'search',      label: 'Comparables',      value: fmtN(d.nb_comparables),           color: 'gray' },
+      ]);
+      const markers = d.comparables.map(function(t) { return {
+        lat: t.latitude, lng: t.longitude,
+        popup: '<strong>'+t.type_local+'</strong><br>'+t.surface_reelle_bati+' m2 - '+fmt(t.prix_m2)+' /m2<br>'+fmtEuro(t.valeur_fonciere)
+      }; });
+      const center = markers.length > 0 ? [markers[0].lat, markers[0].lng] : [46.2, 2.2];
+      showMap('Comparables — '+d.ville, center[0], center[1], 13, markers);
+    }
+
+    function renderEvolution(d) {
+      show('chart-container');
+      document.getElementById('chart-title').textContent = 'Evolution — '+d.ville+(d.type_local ? ' ('+d.type_local+'s)' : '');
+      renderChart('line', d.evolution.map(function(p){return p.annee.toString();}), [
+        { label: 'Prix median (/m2)', data: d.evolution.map(function(p){return p.prix_median_m2;}),
+          borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.08)', yAxisID: 'y', tension: 0.4,
+          pointBackgroundColor: '#8b5cf6', pointRadius: 5, pointHoverRadius: 7, fill: true },
+        { label: 'Volume transactions', data: d.evolution.map(function(p){return p.volume_transactions;}),
+          borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.05)', yAxisID: 'y1', tension: 0.4,
+          pointRadius: 4, borderDash: [4, 4] },
+      ], {
+        scales: {
+          y:  { position: 'left',  title: { display: true, text: 'Euro/m2', color: '#8b5cf6' }, grid: { color: '#f1f1f4' }, ticks: { color: '#9ca3af' } },
+          y1: { position: 'right', title: { display: true, text: 'Transactions', color: '#f59e0b' }, grid: { display: false }, ticks: { color: '#9ca3af' } },
+          x:  { grid: { color: '#f1f1f4' }, ticks: { color: '#9ca3af' } },
+        }
+      });
+    }
+
+    function renderComparaison(d) {
+      const za = d.zone_a, zb = d.zone_b;
+      showStatsCards([
+        { icon: 'map-pin', label: za.zone, value: fmt(za.prix_median_m2)+' /m2', color: 'violet' },
+        { icon: 'map-pin', label: zb.zone, value: fmt(zb.prix_median_m2)+' /m2', color: 'blue' },
+        { icon: 'percent', label: 'Ecart', value: (d.difference_pct > 0 ? '+' : '')+d.difference_pct+'%', color: d.difference_pct > 0 ? 'rose' : 'emerald' },
+      ]);
+      show('chart-container');
+      document.getElementById('chart-title').textContent = za.zone+' vs '+zb.zone;
+      renderChart('bar', [za.zone, zb.zone], [{
+        label: 'Prix median (/m2)',
+        data: [za.prix_median_m2, zb.prix_median_m2],
+        backgroundColor: ['rgba(139,92,246,0.75)', 'rgba(59,130,246,0.75)'],
+        borderColor: ['#8b5cf6', '#3b82f6'],
+        borderWidth: 1, borderRadius: 8, borderSkipped: false,
+      }], {
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { title: { display: true, text: 'Euro/m2', color: '#9ca3af' }, grid: { color: '#f1f1f4' }, ticks: { color: '#9ca3af' } },
+          x: { grid: { display: false }, ticks: { color: '#6b7280' } },
+        }
+      });
+    }
+
+    // ====== UI ======
+    function showStatsCards(cards) {
+      const container = document.getElementById('stats-cards');
+      container.innerHTML = '';
+      const cm = {
+        violet:  { bg: '#f5f3ff', fg: '#8b5cf6', border: '#ede9fe' },
+        blue:    { bg: '#eff6ff', fg: '#3b82f6', border: '#dbeafe' },
+        emerald: { bg: '#ecfdf5', fg: '#10b981', border: '#d1fae5' },
+        rose:    { bg: '#fff1f2', fg: '#f43f5e', border: '#ffe4e6' },
+        amber:   { bg: '#fffbeb', fg: '#f59e0b', border: '#fef3c7' },
+        gray:    { bg: '#f9fafb', fg: '#6b7280', border: '#f3f4f6' },
+      };
+      cards.forEach(function(c, i) {
+        const clr = cm[c.color] || cm.gray;
+        container.innerHTML += '<div class="stat-card bg-white rounded-xl p-3.5 border fade-in" style="animation-delay:'+i*50+'ms;border-color:'+clr.border+';"><div class="flex items-center gap-2 mb-1.5"><div class="w-6 h-6 rounded-md flex items-center justify-center" style="background:'+clr.bg+';"><i data-lucide="'+c.icon+'" class="w-3 h-3" style="color:'+clr.fg+';"></i></div><span class="text-[11px] font-medium text-gray-400">'+c.label+'</span></div><p class="'+(c.large?'text-lg':'text-base')+' font-semibold text-gray-800">'+c.value+'</p></div>';
+      });
+      show('stats-cards');
+    }
+
+    function showMap(title, lat, lng, zoom, markers) {
+      show('map-container');
+      document.getElementById('map-title').textContent = title;
+      if (mapInstance) { mapInstance.remove(); mapInstance = null; }
+      mapInstance = L.map('map', { scrollWheelZoom: true }).setView([lat, lng], zoom);
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OSM &copy; CARTO', maxZoom: 19
+      }).addTo(mapInstance);
+      var icon = L.divIcon({
+        className: '',
+        html: '<div style="width:10px;height:10px;background:#8b5cf6;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.2)"></div>',
+        iconSize: [10, 10], iconAnchor: [5, 5],
+      });
+      markers.forEach(function(m) {
+        L.marker([m.lat, m.lng], { icon: icon }).addTo(mapInstance).bindPopup(m.popup, { maxWidth: 220 });
+      });
+      if (markers.length > 1) {
+        mapInstance.fitBounds(L.latLngBounds(markers.map(function(m){return [m.lat, m.lng];})), { padding: [30, 30] });
+      }
+      // Fix gray tiles when container was hidden or resized
+      setTimeout(function() { if (mapInstance) mapInstance.invalidateSize(); }, 100);
+      setTimeout(function() { if (mapInstance) mapInstance.invalidateSize(); }, 400);
+    }
+
+    function showTable(transactions) {
+      show('table-container');
+      var tbody = document.getElementById('table-body');
+      tbody.innerHTML = transactions.slice(0, 15).map(function(t, i) {
+        return '<tr class="transition-colors hover:bg-gray-50 fade-in border-b border-gray-50" style="animation-delay:'+i*25+'ms;"><td class="px-4 py-2.5 text-gray-400 text-xs">'+t.date_mutation.slice(0,10)+'</td><td class="px-4 py-2.5 text-gray-600 font-medium">'+t.surface_reelle_bati+' m2</td><td class="px-4 py-2.5"><span class="font-semibold text-violet-600">'+fmt(t.prix_m2)+' /m2</span></td><td class="px-4 py-2.5 text-gray-500">'+fmtEuro(t.valeur_fonciere)+'</td></tr>';
+      }).join('');
+    }
+
+    function renderChart(type, labels, datasets, extraOptions) {
+      if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+      var ctx = document.getElementById('main-chart').getContext('2d');
+      chartInstance = new Chart(ctx, {
+        type: type, data: { labels: labels, datasets: datasets },
+        options: Object.assign({
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { font: { family: 'Inter', size: 12 }, color: '#6b7280' } },
+            tooltip: {
+              backgroundColor: '#fff', titleColor: '#1e293b',
+              bodyColor: '#64748b', borderColor: '#e5e7eb',
+              borderWidth: 1, padding: 10, cornerRadius: 8,
+              callbacks: { label: function(ctx) { return ' '+fmtN(ctx.parsed.y)+(ctx.dataset.yAxisID === 'y1' ? ' tx' : ' /m2'); } }
+            },
+          },
+        }, extraOptions),
+      });
+    }
+
+    function show(id) { document.getElementById(id).classList.remove('hidden'); }
+    function hide(id) { document.getElementById(id).classList.add('hidden'); }
+    function fmt(n) { return new Intl.NumberFormat('fr-FR').format(Math.round(n)); }
+    function fmtN(n) { return new Intl.NumberFormat('fr-FR').format(n); }
+    function fmtEuro(n) { return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n); }
+  </script>
+</body>
+</html>
