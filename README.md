@@ -19,7 +19,16 @@ DVF GPT sert a:
 - produire une estimation simple de bien basee sur des transactions comparables;
 - presenter des resultats lisibles a un public non technique.
 
-## 2) Comment ca marche (version simple)
+## 2) Stack technique
+
+- Backend: Flask 3
+- Base analytique: DuckDB
+- Traitement data: Pandas/SQL
+- LLM: Google Gemini (`gemini-2.5-flash`)
+- Validation/contrats: Pydantic v2
+- Frontend: HTML + Tailwind CSS + Leaflet + Chart.js + Marked
+
+## 3) Comment ca marche
 
 Pipeline d'une question:
 
@@ -40,7 +49,7 @@ Point important:
 - Le LLM sert uniquement a comprendre la demande et reformuler la reponse.
 - Les calculs metier et les requetes sont geres par le code Python + DuckDB.
 
-## 3) Fonctionnalites disponibles
+## 4) Fonctionnalites disponibles
 
 Le systeme gere 5 intentions metier:
 
@@ -58,7 +67,7 @@ Comportements utiles:
 - Messages d'aide si ville/surface manquante.
 - Message explicite si la base DVF locale n'est pas construite.
 
-## 4) Architecture du projet
+## 5) Architecture du projet
 
 ```text
 dvf-gpt/
@@ -94,7 +103,7 @@ dvf-gpt/
 └── .env.example
 ```
 
-## 5) Zoom technique detaille sur une intention: prix_m2
+## 6) Zoom technique detaille sur une intention: prix_m2
 
 Cette section explique le fonctionnement complet sur un seul cas d'usage.
 Les autres intentions suivent ensuite la meme logique globale.
@@ -138,7 +147,7 @@ Points techniques importants:
 - Si aucune donnee n'est trouvee, le systeme renvoie un message explicite.
 - Le LLM ne fait pas les calculs: il reformule des chiffres deja calcules.
 
-## 6) Les autres intentions: meme structure, regles differentes
+## 7) Les autres intentions: meme structure, regles differentes
 
 Les intentions comparables, estimation, evolution et comparaison utilisent la meme architecture:
 
@@ -155,7 +164,7 @@ Ce qui change entre les intentions:
 - evolution: calcule une serie annuelle (prix median et volume).
 - comparaison: compare 2 zones (2 villes ou 2 departements) et calcule l'ecart en pourcentage.
 
-## 7) Modele de donnees et contrats (Pydantic)
+## 8) Modele de donnees et contrats (Pydantic)
 
 Le fichier app/models/schemas.py garantit la stabilite des echanges entre couches.
 
@@ -171,7 +180,7 @@ Pourquoi c'est important pour le projet:
 - validation automatique des bornes (ex: confidence entre 0 et 1);
 - format de sortie stable pour le frontend.
 
-## 8) Couche SQL centralisee (repository)
+## 9) Couche SQL centralisee (repository)
 
 Toutes les requetes SQL sont regroupees dans app/repositories/dvf_repository.py.
 
@@ -187,7 +196,7 @@ Pourquoi ce choix d'architecture:
 - maintenance plus simple si le schema evolue;
 - meilleure lisibilite lors d'une revue technique.
 
-## 9) Construction de la base DVF locale (pipeline data)
+## 10) Construction de la base DVF locale (pipeline data)
 
 Le script scripts/build_dvf_database.py fait tout le pretraitement avant utilisation par l'API.
 
@@ -212,13 +221,13 @@ Pourquoi ce pretraitement est crucial:
 - il fiabilise les statistiques exposees au chat;
 - il accelere les requetes pendant l'utilisation en direct.
 
-## 10) Prerequis
+## 11) Prerequis
 
 - Python 3.10+
 - Connexion internet (pour telecharger les donnees DVF)
 - Cle API Gemini (Google AI Studio)
 
-## 11) Installation rapide
+## 12) Installation rapide
 
 ### Etape 1: installer les dependances
 
@@ -266,7 +275,7 @@ Verification sante API:
 
 - http://localhost:5001/api/health
 
-## 12) API (pour integrer ou tester)
+## 13) API (pour integrer ou tester)
 
 ### POST /api/chat
 
@@ -327,7 +336,7 @@ Si la base n'existe pas encore:
 }
 ```
 
-## 13) Interface utilisateur
+## 14) Interface utilisateur
 
 L'interface web inclut:
 
@@ -338,13 +347,6 @@ L'interface web inclut:
 - un tableau de comparables (date, surface, prix/m2, prix total);
 - un bloc de raisonnement (debug) pour expliquer les etapes de traitement.
 
-## 14) Hypotheses et limites
-
-- L'estimation est une methode simple basee sur la mediane des comparables et une marge fixe de +/-10%.
-- Les resultats dependent de la qualite et du volume de donnees disponibles dans la zone demandee.
-- L'outil n'est pas une expertise notariale ou bancaire.
-- Seuls les biens `Appartement` et `Maison` sont pris en charge.
-
 ## 15) Depannage rapide
 
 1. Erreur "base non disponible": lancer `python scripts/build_dvf_database.py`.
@@ -352,18 +354,9 @@ L'interface web inclut:
 3. Erreur LLM: verifier `GEMINI_API_KEY` dans `.env`.
 4. Port incorrect: l'application tourne par defaut sur `5001` (voir `run.py`).
 
-## 16) Stack technique
+## 16) Docker
 
-- Backend: Flask 3
-- Base analytique: DuckDB
-- Traitement data: Pandas
-- LLM: Google Gemini (`gemini-2.5-flash`)
-- Validation/contrats: Pydantic v2
-- Frontend: HTML + Tailwind CSS + Leaflet + Chart.js + Marked
-
-## 17) Docker (version legere, recommandee pour demo)
-
-Cette version est ideale si vous avez deja la base locale dans le dossier data.
+Cette version est ideale si la base locale est présente dans le dossier data.
 
 Pourquoi c'est utile:
 
@@ -375,7 +368,7 @@ Ce qui est fourni dans le repo:
 
 - Dockerfile: image Python + installation des dependances avec uv + lancement Gunicorn;
 - docker-compose.yml: demarrage simple avec port 5001;
-- volume `./data:/app/data` pour reutiliser votre base DuckDB locale.
+- volume `./data:/app/data` pour reutiliser la base DuckDB locale.
 
 ### Prerequis
 
@@ -401,6 +394,6 @@ docker compose down
 
 ### Notes importantes
 
-1. Le conteneur lit votre base locale grace au volume `./data:/app/data`.
+1. Le conteneur lit la base locale grace au volume `./data:/app/data`.
 2. Si `data/dvf.duckdb` est absent, l'API repondra que la base est manquante.
 3. Le serveur dans Docker utilise Gunicorn (plus adapte qu'un serveur Flask dev).
