@@ -120,26 +120,26 @@ Ce que le systeme doit extraire:
 
 Chemin d'execution dans le code:
 
-1. app/routes/api.py
-         - valide que le champ message existe;
-         - appelle chat_service.handle_message(question).
-2. app/services/chat_service.py (fonction _handle_prix_m2)
-         - verifie qu'on a au moins une ville ou un departement;
-         - appelle price_service.get_prix_m2(intent).
-3. app/services/dvf/price_service.py
-         - delegue la requete a dvf_repository.fetch_prix_m2(...);
-         - transforme la ligne SQL en objet metier PrixM2Result.
-4. app/repositories/dvf_repository.py
-         - calcule les statistiques SQL:
-                 - prix median au m2;
-                 - prix moyen au m2;
-                 - volume de transactions;
-                 - percentiles bas/haut (p10/p90);
-                 - latitude/longitude moyennes pour la carte.
-5. retour dans chat_service
-         - construit un resume metier;
-         - demande une reformulation naturelle a Gemini;
-         - retourne une reponse API structuree (message + data + type de visualisation).
+1. **app/routes/api.py**
+   - valide que le champ message existe;
+   - appelle chat_service.handle_message(question).
+3. **app/services/chat_service.py** (fonction _handle_prix_m2)
+   - verifie qu'on a au moins une ville ou un departement;
+   - appelle price_service.get_prix_m2(intent).
+5. **app/services/dvf/price_service.py**
+   - delegue la requete a dvf_repository.fetch_prix_m2(...);
+   - transforme la ligne SQL en objet metier PrixM2Result.
+7. **app/repositories/dvf_repository.py**
+   - calcule les statistiques SQL:
+     - prix median au m2;
+     - prix moyen au m2;
+     - volume de transactions;
+     - percentiles bas/haut (p10/p90);
+     - latitude/longitude moyennes pour la carte.
+9. retour dans **chat_service/**
+    - construit un resume metier;
+    - demande une reformulation naturelle a Gemini;
+    - retourne une reponse API structuree (message + data + type de visualisation).
 
 Points techniques importants:
 
